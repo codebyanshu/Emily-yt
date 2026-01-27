@@ -16,11 +16,12 @@ load_dotenv()
 env_vars = dotenv_values(".env")
 GroqAPIKey = os.getenv("GroqAPIKey")
 
-print(GroqAPIKey)
+# print(GroqAPIKey)
 
 classes = ["zCubwf", "hgKElc", "LTKOO SY7ric", "ZOLcW", "gsrt vk_bk FzvWSb YwPhnf", "pclqee", "tw-Data-text tw-text-small tw-ta", "IZ6rdc", "05uR6d LTKOO", "vlzY6d","webanswers-webanswers_table_webanswers-table", "dDoNo ikb48b gsrt", "sXLa0e", "LWkfKe", "VQF4g", "qv3Wpe", "kno-rdesc", "SPZz6b"]
 
-useragent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
+useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 
 client = Groq(api_key=GroqAPIKey)
 
@@ -31,11 +32,13 @@ professional_responses = [
 
 messages = []
 
-SystemChatBot = [{"role" : "system", "content" : f"Hello,I am{os.environ['Username']},You are content writer.You have to write content for me like letters,application,story,text,youtube descriptions,etc. Be professional and polite while writing content. Use formal tone."}]
+SystemChatBot = [{"role" : "system", "content" : f"Hello,I am{os.environ['Username']},You are content writer.You have to write content for me like letters,application,story,text,youtube descriptions,code ,essays,notes,songs,poems ,etc. Be professional and polite while writing content. Use formal tone."}]
 
 def GoogleSearch(Topic):
     search(Topic)
     return True
+
+# GoogleSearch("yt")
 
 def Content(Topic):
     
@@ -75,7 +78,7 @@ def Content(Topic):
     OpenNotepad(rf"Data\{Topic.lower().replace(' ','')}.txt")
     return True
 
-Content("write an application for sick leave")
+# Content("write an application for sick leave")
 def YoutubeSearch(Topic):
     Url4Search = f"https://www.youtube.com/results?search_query={Topic.replace(' ','+')}"
     webbrowser.open(Url4Search)
@@ -84,36 +87,55 @@ def YoutubeSearch(Topic):
 def YoutubePlay(query):
     playonyt(query)
     return True
+# YoutubePlay("hare rama hare krishna")
 
-def OpenApp(app,sess= requests.Session()):
+
+def OpenApp(app, sess=requests.Session()):
+    # 1️⃣ Try opening installed app
     try:
-        appopen(app,match_closest=True,output=True,throw_error=True)
+        appopen(app, match_closest=True, output=False, throw_error=True)
         return True
     except:
-        def extract_links(html):
-            if html is None:
-                return []
-            soup = BeautifulSoup(html, 'html.parser')   
-            links = soup.find_all('a',{'jsname' : 'UWckNb'})
-            return [link.get('href') for link in links]
+        pass  # app not installed → go web
 
-        def search_google(query):
-            url = f"https://www.google.com/search?q={query}"
-            headers = {'User-Agent': useragent}
-            response = sess.get(url, headers=headers)
-            
-            if response.status_code == 200:
-                return response.text
-            else:
-                print("Failed to retrieve search results")
-            return None
-        html = search_google(app)
+    # 2️⃣ Google search (spell mistakes handled by Google)
+    def search_google(query):
+        url = f"https://www.google.com/search?q={query}"
+        headers = {
+            "User-Agent": useragent,
+            "Accept-Language": "en-US,en;q=0.9"
+        }
+        r = sess.get(url, headers=headers, timeout=10)
+        return r.text if r.status_code == 200 else None
 
-        if html:
-            links = extract_links(html)[0]
-            webopen(links)
-            
-        return True
+    # 3️⃣ Extract first REAL website link
+    def extract_first_link(html):
+        soup = BeautifulSoup(html, "html.parser")
+
+        for a in soup.select("a"):
+            href = a.get("href")
+            if href and href.startswith("/url?q="):
+                clean = href.split("/url?q=")[1].split("&")[0]
+                if clean.startswith("http"):
+                    return clean
+        return None
+
+    html = search_google(app)
+
+    if html:
+        link = extract_first_link(html)
+        if link:
+            webopen(link)
+            return True
+
+    # 4️⃣ Absolute fallback (never fails)
+    webopen(f"https://www.google.com/search?q={app}")
+    return True
+
+# OpenApp("instagram")
+# OpenApp("facebook")
+# OpenApp("github")
+
 def CloseApp(app):
     if "chrome" in app:
         pass
@@ -123,6 +145,8 @@ def CloseApp(app):
             return True
         except:
             return False
+        
+# CloseApp("whatsapp")
         
 def System(command):
     
@@ -180,23 +204,27 @@ async def TranslateAndExecute(commands:list[str]):
             fun = asyncio.to_thread(YoutubePlay,command.removeprefix("play "))
             funcs.append(fun)
             
-        elif command.startswith("google search "):
-            fun = asyncio.to_thread(GoogleSearch,command.removeprefix("google search "))
+        elif command.startswith("google search " or "search "):
+            fun = asyncio.to_thread(GoogleSearch,command.removeprefix("google search " or "search "))
             funcs.append(fun)
             
 
-        elif command.startswith("youtube search "):
-            fun = asyncio.to_thread(YoutubeSearch,command.removeprefix("youtube search "))
+        elif command.startswith("youtube search " or "search on youtube "):
+            fun = asyncio.to_thread(YoutubeSearch,command.removeprefix("youtube search "or "search on youtube "))
             funcs.append(fun)
 
         elif command.startswith("system "):
             fun = asyncio.to_thread(System,command.removeprefix("system "))
             funcs.append(fun)
+        
+        elif command.startswith("write " or "code " or "make "):
+            fun = asyncio.to_thread(Content,command.removeprefix("write " or "code " or "make "))
+            funcs.append(fun)
 
         else:
             print(f"No Function found. For {command}")
     
-    results = await asyncio.gether(*funcs)
+    results = await asyncio.gather(*funcs)
 
     for result in results:
         if isinstance(result,str):
@@ -211,5 +239,6 @@ async def Automation(commands:list[str]):
     return True
 
 
-
+# if __name__ == "__main__":
+    # asyncio.run(Automation(["open yt","open insta","open telegram","play hanuman chilsa","search rcb","write a poem"]))
             

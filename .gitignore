@@ -4,3 +4,5 @@
 *.html
 __pycache__/
 *.pyc
+*.jpg
+*.png

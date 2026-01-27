@@ -1,18 +1,17 @@
-import asyncio
+import os
+import time
+import requests
 from random import randint
 from PIL import Image
-import requests
 from dotenv import load_dotenv
-import os
-from time import sleep
 
 # =========================
-# PATH SETUP (CRITICAL FIX)
+# PATHS
 # =========================
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # Backend/
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "Data")
-FRONTEND_FILE = os.path.join(BASE_DIR, "..", "Frontend", "Files", "ImageGeneration.data")
+CONTROL_FILE = os.path.join(BASE_DIR, "..", "Frontend", "Files", "ImageGeneration.data")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -23,91 +22,104 @@ os.makedirs(DATA_DIR, exist_ok=True)
 load_dotenv()
 HF_API_KEY = os.getenv("HF_API_KEY")
 
-# =========================
-# OPEN GENERATED IMAGES
-# =========================
-
-def open_images(prompt):
-    prompt = prompt.replace(" ", "_")
-
-    for i in range(1, 5):
-        image_path = os.path.join(DATA_DIR, f"{prompt}{i}.jpg")
-        try:
-            img = Image.open(image_path)
-            print(f"Opening image: {image_path}")
-            img.show()
-            sleep(1)
-        except IOError:
-            print(f"Unable to open image: {image_path}")
+API_URL = "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
+HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
 
 # =========================
-# HUGGINGFACE API
+# FILE HELPERS
 # =========================
 
-API_URL = "https://api-inference.huggingface.co/models/stable-diffusion-xl-base-1.0"
-headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+def write_file(text):
+    with open(CONTROL_FILE, "w") as f:
+        f.write(text)
 
-async def query(payload):
-    response = await asyncio.to_thread(
-        requests.post,
-        API_URL,
-        headers=headers,
-        json=payload,
-        timeout=120
-    )
-    return response.content
+def read_file():
+    if not os.path.exists(CONTROL_FILE):
+        return ""
+    with open(CONTROL_FILE, "r") as f:
+        return f.read().strip()
 
 # =========================
-# IMAGE GENERATION
+# IMAGE API
 # =========================
 
-async def generate_image(prompt: str):
-    tasks = []
-
-    for _ in range(4):
-        payload = {
-            "inputs": f"{prompt}, sharpness maximum, ultra HD, 8k, highly detailed, photorealistic, seed={randint(1, 1000000)}",
-            "options": {"wait_for_model": True}
+def call_hf(prompt, seed):
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "seed": seed,
+            "width": 1024,
+            "height": 1024
         }
-        tasks.append(asyncio.create_task(query(payload)))
+    }
 
-    image_bytes_list = await asyncio.gather(*tasks)
+    r = requests.post(API_URL, headers=HEADERS, json=payload, timeout=90)
 
-    for i, image_bytes in enumerate(image_bytes_list):
-        img_path = os.path.join(DATA_DIR, f"{prompt.replace(' ', '_')}{i+1}.jpg")
-        with open(img_path, "wb") as f:
-            f.write(image_bytes)
+    if r.headers.get("content-type", "").startswith("image"):
+        return r.content
 
-def GenerateImage(prompt: str):
-    asyncio.run(generate_image(prompt))
-    open_images(prompt)
-
-# =========================
-# FILE WATCHER LOOP
-# =========================
-
-while True:
     try:
-        with open(FRONTEND_FILE, "r") as f:
-            data = f.read().strip()
+        err = r.json()
+        print("HF API error:", err)
+        return "PERMISSION_ERROR"
+    except:
+        return None
 
-        if not data:
-            sleep(1)
+# =========================
+# GENERATION
+# =========================
+
+def generate(prompt):
+    safe_prompt = prompt.replace(" ", "_")
+
+    for i in range(4):
+        write_file(f"PROGRESS:{int((i / 4) * 100)}")
+
+        result = call_hf(prompt, randint(1, 9999999))
+
+        if result == "PERMISSION_ERROR":
+            write_file("ERROR:HF_PERMISSION")
+            return False
+
+        if not result:
+            print(f"Image {i+1} failed.")
             continue
 
-        Status, prompt = data.split(",", 1)
+        path = os.path.join(DATA_DIR, f"{safe_prompt}{i+1}.jpg")
 
-        if Status == "True":
-            print("Generating Image...")
-            GenerateImage(prompt)
+        with open(path, "wb") as f:
+            f.write(result)
 
-            with open(FRONTEND_FILE, "w") as f:
-                f.write("False,False")
+        try:
+            Image.open(path).verify()
+        except:
+            print("Invalid image:", path)
 
+    return True
+
+# =========================
+# MAIN LOOP
+# =========================
+
+print("ImageGeneration service running...")
+
+while True:
+    data = read_file()
+
+    if not data:
+        time.sleep(1)
+        continue
+
+    if data.startswith("True"):
+        _, prompt = data.split(",", 1)
+
+        success = generate(prompt)
+
+        if success:
+            write_file("False,False")
+            break
+        else:
+            write_file("False,False")
             break
 
-        sleep(1)
-
-    except Exception as e:
-        print("Error:", e)
-        sleep(1)
+    time.sleep(1)

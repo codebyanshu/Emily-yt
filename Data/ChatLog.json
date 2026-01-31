@@ -262,5 +262,29 @@
     {
         "role": "assistant",
         "content": "Unfortunately, the search results provided are empty, and I don't have the current stock price of Tata in Indian Rupees (Rs). If you need to know the current price, I recommend checking a reliable financial website or a stock market platform for the most up-to-date information."
+    },
+    {
+        "role": "user",
+        "content": "Hello how are you?"
+    },
+    {
+        "role": "assistant",
+        "content": "Hello, I'm doing well, thanks."
+    },
+    {
+        "role": "user",
+        "content": "Hello. "
+    },
+    {
+        "role": "assistant",
+        "content": "Hello."
+    },
+    {
+        "role": "user",
+        "content": "Hello. "
+    },
+    {
+        "role": "assistant",
+        "content": "Hi."
     }
 ]

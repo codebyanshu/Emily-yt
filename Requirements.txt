@@ -16,3 +16,5 @@ edge-tts
 PyQt5
 webdriver-manager
 pyautogui
+SpeechRecognition
+PyAudio

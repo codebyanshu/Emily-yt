@@ -1,4 +1,5 @@
 import re
+import os
 import time
 import webbrowser
 import pyautogui
@@ -7,15 +8,63 @@ from AppOpener import open as appopen
 
 pyautogui.FAILSAFE = True
 
+# Check if OpenCV is available for confidence-based image matching
+try:
+    import cv2  # noqa: F401
+    _cv2_available = True
+except Exception:
+    _cv2_available = False
+
+# Speed tuning: set <1.0 to make actions faster (may reduce reliability),
+# set >1.0 to slow down. Default 1.0 is safe.
+SPEED_MULTIPLIER = 1.0
+
+# Dry-run mode: when enabled, simulate WhatsApp actions instead of clicking
+DRY_RUN = os.getenv("DRY_RUN", "").lower() in ("1", "true", "yes")
+
 # =========================
 # UTILITIES
 # =========================
 
 def wait(sec=1.0):
-    time.sleep(sec)
+    # Minimum sleep to avoid hammering the UI
+    time.sleep(max(0.02, sec * SPEED_MULTIPLIER))
+
+
+def safe_locate_on_screen(image_path, confidence=0.75, timeout=8):
+    """Try to locate an image on screen. If OpenCV isn't available, fall back to
+    Pillow-based locate (no confidence). Returns the location or None.
+    """
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            if _cv2_available:
+                loc = pyautogui.locateOnScreen(image_path, confidence=confidence)
+            else:
+                loc = pyautogui.locateOnScreen(image_path)
+            if loc:
+                return loc
+        except TypeError:
+            try:
+                loc = pyautogui.locateOnScreen(image_path)
+                if loc:
+                    return loc
+            except Exception:
+                pass
+        except Exception:
+            pass
+        wait(0.15)
+    return None
 
 def clean_name(name: str) -> str:
-    return name.strip()
+    # Strip surrounding whitespace and trailing punctuation that may come from speech
+    if not name:
+        return ""
+    n = name.strip()
+    # remove surrounding quotes and trailing punctuation
+    n = n.strip(' \"\'')
+    n = n.rstrip('.,!?;:')
+    return n.strip()
 
 # =========================
 # PROMPT PARSER
@@ -104,20 +153,44 @@ def send_message_desktop(message):
 # UNIVERSAL CALL (RESIZE SAFE)
 # =========================
 
+import time
+import pyautogui
+
 def universal_call(call_type="voice", timeout=8):
-    icon = "Data/voice_call.png" if call_type == "call" else "Data/video_call.png"
-    start = time.time()
+    """
+    call_type: 'voice' or 'video'
+    """
 
-    while time.time() - start < timeout:
-        location = pyautogui.locateOnScreen(icon, confidence=0.75)
-        if location:
-            pyautogui.moveTo(pyautogui.center(location), duration=0.25)
-            pyautogui.click()
-            return True
-        time.sleep(0.4)
+    # Step 1: Call menu button
+    call_menu_icon = "Data/call_menu.png"   # camera + call icon (top button)
 
-    print(f"[ERROR] {call_type} call icon not found")
+    # Step 2: Dropdown options
+    voice_icon = "Data/voice_call.png"
+    video_icon = "Data/video_call.png"
+
+    target_icon = voice_icon if call_type == "voice" else video_icon
+
+    # ---- Open call dropdown ----
+    menu_loc = safe_locate_on_screen(call_menu_icon, confidence=0.75, timeout=timeout)
+    if not menu_loc:
+        print("[ERROR] Call menu not found")
+        return False
+
+    move_duration = max(0.06, 0.25 * SPEED_MULTIPLIER)
+    pyautogui.moveTo(pyautogui.center(menu_loc), duration=move_duration)
+    pyautogui.click()
+    wait(0.6)  # allow dropdown to appear
+
+    # ---- Click voice / video button ----
+    option_loc = safe_locate_on_screen(target_icon, confidence=0.75, timeout=timeout)
+    if option_loc:
+        pyautogui.moveTo(pyautogui.center(option_loc), duration=move_duration)
+        pyautogui.click()
+        return True
+
+    print(f"[ERROR] {call_type} call option not found")
     return False
+
 
 # =========================
 # WHATSAPP WEB
@@ -125,7 +198,7 @@ def universal_call(call_type="voice", timeout=8):
 
 def open_whatsapp_web():
     webbrowser.open("https://web.whatsapp.com")
-    time.sleep(12)
+    wait(12)
 
 def whatsapp_web_search(name):
     pyautogui.hotkey("ctrl", "alt", "/")
@@ -161,6 +234,10 @@ def WhatsAppController(prompt):
     name = clean_name(parsed["name"])
     message = parsed["message"]
 
+    if DRY_RUN:
+        print(f"[DRY_RUN] WhatsAppController would perform: action={action}, name={name}, message={message}")
+        return {"success": True, "method": "dry", "action": action, "name": name, "message": message}
+
     # ---------- DESKTOP ----------
     if open_whatsapp_desktop():
         whatsapp_desktop_search(name)
@@ -170,7 +247,8 @@ def WhatsAppController(prompt):
             return {"success": True, "method": "desktop"}
 
         if action in ("call", "video"):
-            universal_call(action)
+            call_type = "voice" if action == "call" else "video"
+            universal_call(call_type)
             return {"success": True, "method": "desktop"}
 
         return {"success": True, "method": "desktop"}
@@ -184,7 +262,8 @@ def WhatsAppController(prompt):
         return {"success": True, "method": "web"}
 
     if action in ("call", "video"):
-        universal_call(action)
+        call_type = "voice" if action == "call" else "video"
+        universal_call(call_type)
         return {"success": True, "method": "web"}
 
     return {"success": False, "error": "Unhandled action"}

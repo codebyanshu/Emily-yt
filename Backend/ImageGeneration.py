@@ -101,25 +101,26 @@ def generate(prompt):
 # MAIN LOOP
 # =========================
 
-print("ImageGeneration service running...")
+if __name__ == "__main__":
+    print("ImageGeneration service running...")
 
-while True:
-    data = read_file()
+    while True:
+        data = read_file()
 
-    if not data:
+        if not data:
+            time.sleep(1)
+            continue
+
+        if data.startswith("True"):
+            _, prompt = data.split(",", 1)
+
+            success = generate(prompt)
+
+            if success:
+                write_file("False,False")
+                break
+            else:
+                write_file("False,False")
+                break
+
         time.sleep(1)
-        continue
-
-    if data.startswith("True"):
-        _, prompt = data.split(",", 1)
-
-        success = generate(prompt)
-
-        if success:
-            write_file("False,False")
-            break
-        else:
-            write_file("False,False")
-            break
-
-    time.sleep(1)

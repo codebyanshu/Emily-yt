@@ -6,6 +6,10 @@ from webdriver_manager.chrome import ChromeDriverManager
 from dotenv import dotenv_values
 import os
 import mtranslate as mt
+import atexit
+import signal
+import sys
+import time
 
 env_vars = dotenv_values('.env')
 
@@ -95,24 +99,87 @@ def UniversalTranslator(text):
     return english_translation.capitalize()
 
 def SpeechRecognition(Query):
-    driver.get("file:///"+Link)
-
-    driver.find_element(by=By.ID,value="start").click()
-    
-    while True:
+    # Load the speech page and start recognition if needed
+    try:
+        driver.get("file:///" + Link)
+        # start recognition (button handler exists in the page)
         try:
-            Text = driver.find_element(by=By.ID,value="output").text
+            driver.find_element(by=By.ID, value="start").click()
+        except Exception:
+            try:
+                driver.execute_script("startRecognition();")
+            except Exception:
+                pass
+    except Exception:
+        pass
 
-            if Text:
-                driver.find_element(by=By.ID,value="end").click()
-                
+    # Poll the output element until text appears
+    poll_interval = 0.05
+    max_wait = 20.0
+    start = time.time()
+    while time.time() - start < max_wait:
+        try:
+            Text = driver.find_element(by=By.ID, value="output").text
+            if Text and Text.strip():
+                # attempt to stop recognition quickly
+                try:
+                    driver.find_element(by=By.ID, value="end").click()
+                except Exception:
+                    try:
+                        driver.execute_script("stopRecognition();")
+                    except Exception:
+                        pass
+
                 if InputLanguge.lower() != "en" or "en" in InputLanguge.lower():
                     return QueryModifier(Text)
                 else:
                     SetAssistantStatus("Translating...")
                     return QueryModifier(UniversalTranslator(Text))
-        except Exception as e:
+        except Exception:
             pass
+        time.sleep(poll_interval)
+    return ""
+
+
+def StopSpeechRecognition():
+    """Stop the recognition on the page and quit the browser driver."""
+    global driver
+    try:
+        # call the page's stop function if available
+        try:
+            driver.execute_script("if (typeof stopRecognition === 'function') { stopRecognition(); }")
+        except Exception:
+            pass
+        # try to stop the recognition object if accessible
+        try:
+            driver.execute_script("if (typeof recognition !== 'undefined') { try { recognition.stop(); } catch(e){} }")
+        except Exception:
+            pass
+    except Exception:
+        pass
+    try:
+        driver.quit()
+    except Exception:
+        pass
+
+
+# Ensure cleanup on normal exit
+atexit.register(StopSpeechRecognition)
+
+# Ensure cleanup on SIGINT/SIGTERM
+def _signal_handler(sig, frame):
+    StopSpeechRecognition()
+    try:
+        sys.exit(0)
+    except SystemExit:
+        pass
+
+signal.signal(signal.SIGINT, _signal_handler)
+try:
+    signal.signal(signal.SIGTERM, _signal_handler)
+except Exception:
+    # SIGTERM may not be available on Windows in some contexts
+    pass
         
 if __name__ == "__main__":
     while True:

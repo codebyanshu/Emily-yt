@@ -16,6 +16,33 @@ load_dotenv()
 env_vars = dotenv_values(".env")
 GroqAPIKey = os.getenv("GroqAPIKey")
 
+# Dry-run mode: when enabled (env DRY_RUN=1 or true), stub out UI/network actions
+DRY_RUN = os.getenv("DRY_RUN", "").lower() in ("1", "true", "yes")
+if DRY_RUN:
+    print("[DRY_RUN] Automation stubs active — no UI or network actions will run")
+    def appopen_stub(*a, **k):
+        print("[DRY_RUN] appopen", a, k)
+        return True
+    def close_stub(*a, **k):
+        print("[DRY_RUN] close", a, k)
+        return True
+    def webopen_stub(*a, **k):
+        print("[DRY_RUN] webopen", a, k)
+        return True
+    def playonyt_stub(*a, **k):
+        print("[DRY_RUN] playonyt", a, k)
+        return True
+    def search_stub(*a, **k):
+        print("[DRY_RUN] search", a, k)
+        return True
+
+    # override imported names with stubs
+    appopen = appopen_stub
+    close = close_stub
+    webopen = webopen_stub
+    playonyt = playonyt_stub
+    search = search_stub
+
 # print(GroqAPIKey)
 
 classes = ["zCubwf", "hgKElc", "LTKOO SY7ric", "ZOLcW", "gsrt vk_bk FzvWSb YwPhnf", "pclqee", "tw-Data-text tw-text-small tw-ta", "IZ6rdc", "05uR6d LTKOO", "vlzY6d","webanswers-webanswers_table_webanswers-table", "dDoNo ikb48b gsrt", "sXLa0e", "LWkfKe", "VQF4g", "qv3Wpe", "kno-rdesc", "SPZz6b"]
@@ -44,6 +71,9 @@ def Content(Topic):
     
     def OpenNotepad(File):
         default_text_editor = "notepad.exe"
+        if DRY_RUN:
+            print(f"[DRY_RUN] Would open notepad with {File}")
+            return
         subprocess.Popen([default_text_editor, File])
         
     def ContentWriterAI(prompt):
@@ -91,6 +121,21 @@ def YoutubePlay(query):
 
 
 def OpenApp(app, sess=requests.Session()):
+    # quick direct mappings for common sites/apps
+    name_low = app.strip().lower()
+    if name_low in ("youtube", "yt", "youtube.com"):
+        try:
+            webopen("https://www.youtube.com")
+            return True
+        except Exception:
+            pass
+    if name_low in ("google", "google.com"):
+        try:
+            webopen("https://www.google.com")
+            return True
+        except Exception:
+            pass
+
     # 1️⃣ Try opening installed app
     try:
         appopen(app, match_closest=True, output=False, throw_error=True)
@@ -234,9 +279,10 @@ async def TranslateAndExecute(commands:list[str]):
             
 async def Automation(commands:list[str]):
 
+    results = []
     async for result in TranslateAndExecute(commands):
-        pass
-    return True
+        results.append(result)
+    return results
 
 
 # if __name__ == "__main__":
